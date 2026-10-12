@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>共享文本</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --panel: #161b22;
+    --border: #30363d;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --accent: #2f81f7;
+    --ok: #3fb950;
+    --warn: #d29922;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    display: flex;
+    flex-direction: column;
+    padding: 20px;
+    gap: 16px;
+  }
+  body.lock { overflow: hidden; }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  h1 { font-size: 18px; margin: 0; font-weight: 600; }
+  .head-right { display: flex; align-items: center; gap: 10px; }
+  .status { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); transition: background .2s; }
+  .dot.on { background: var(--ok); }
+  main {
+    flex: 1;
+    display: flex;
+    gap: 16px;
+    min-height: 0;
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .left-panel { flex: 1 1 auto; min-width: 0; gap: 12px; overflow: auto; }
+  .panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .panel-head h2 {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--muted);
+    margin: 0;
+    font-weight: 600;
+  }
+  .panel {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    flex: 1;
+    min-height: 0;
+  }
+  .field {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    gap: 8px;
+    flex: 1;
+  }
+  .field label {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  textarea {
+    flex: 1;
+    resize: none;
+    width: 100%;
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 14px;
+    line-height: 1.55;
+    outline: none;
+    transition: border-color .15s;
+    min-height: 90px;
+  }
+  textarea:focus { border-color: var(--accent); }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .row .saveState { margin-left: auto; }
+  input[type="text"] {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    padding: 8px 10px;
+    font-size: 13px;
+    outline: none;
+    min-width: 0;
+  }
+  button {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 7px 12px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity .15s, transform .05s;
+    white-space: nowrap;
+  }
+  button:hover { opacity: .9; }
+  button:active { transform: scale(.97); }
+  button.ghost {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+  }
+  button.danger:hover { color: #f85149; border-color: #f85149; }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  button:disabled:active { transform: none; }
+  .saveState { font-size: 12px; color: var(--muted); }
+  .only-mobile { display: none; }
+
+  /* 扫码共享模块（整体可折叠，弹性布局折叠） */
+  #qrToggle { display: inline-flex; align-items: center; justify-content: center; padding: 7px; color: var(--muted); }
+  #qrToggle:hover { color: var(--text); }
+  .qr-card {
+    flex: 0 0 auto;
+    width: 260px;
+    max-height: 640px;
+    overflow: hidden;
+    transition: width .25s ease, max-height .25s ease, flex-basis .25s ease,
+                padding .25s ease, border-width .25s ease;
+  }
+  .qr-card.collapsed {
+    width: 0;
+    flex-basis: 0;
+    max-height: 0;
+    padding: 0;
+    border-width: 0;
+  }
+  .qr-body {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .qr-wrap { flex: 1; display: flex; align-items: center; justify-content: center; min-height: 0; overflow: hidden; }
+  .qr-card img {
+    max-width: 220px;
+    max-height: 280px;
+    width: 100%;
+    height: auto;
+    image-rendering: pixelated;
+    background: #fff;
+    border-radius: 8px;
+    padding: 8px;
+    box-sizing: border-box;
+  }
+  .link-wrap { display: flex; flex-direction: column; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 8px; line-height: 1.5; }
+
+  /* 全屏文本框 */
+  .field.fs {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    margin: 0;
+    padding: 14px;
+    padding-top: calc(14px + env(safe-area-inset-top));
+    padding-bottom: calc(14px + env(safe-area-inset-bottom));
+    gap: 10px;
+    background: var(--bg);
+    overflow: auto;
+  }
+  .field.fs textarea { min-height: 0; font-size: 15px; }
+  .field.fs label { font-size: 13px; }
+
+  .toast {
+    position: fixed;
+    left: 50%;
+    bottom: 24px;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--warn);
+    color: #0d1117;
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s, transform .2s;
+    z-index: 70;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  @media (max-width: 720px) {
+    body { padding: 12px; gap: 12px; }
+    main { flex-direction: column; }
+    .only-mobile { display: inline-flex; }
+    .qr-card { width: auto; flex: 0 0 auto; }
+    .qr-card.collapsed { width: auto; flex: 0 1 0; }
+    .qr-card img { max-width: 130px; max-height: 170px; }
+  }
+</style>
+</head>
+<body>
+  <header>
+    <h1>共享文本</h1>
+    <div class="head-right">
+      <button class="ghost" id="qrToggle" aria-label="收起扫码共享" title="收起扫码共享">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">
+          <rect x="3" y="3" width="7" height="7" rx="1"></rect>
+          <rect x="14" y="3" width="7" height="7" rx="1"></rect>
+          <rect x="3" y="14" width="7" height="7" rx="1"></rect>
+          <path d="M14 14h2v2h-2z"></path>
+          <path d="M18 14h1.5v1.5H18z"></path>
+          <path d="M14 18h1.5v1.5H14z"></path>
+          <path d="M17 17h2v2h-2z"></path>
+          <path d="M19.5 19.5H21"></path>
+        </svg>
+      </button>
+      <div class="status"><span class="dot" id="dot"></span><span id="statusText">连接中…</span></div>
+    </div>
+  </header>
+
+  <main>
+    <section class="card left-panel">
+      <div class="panel-head">
+        <h2>共享文本</h2>
+        <button id="addBtn">＋ 添加文本框</button>
+      </div>
+      <div class="panel" id="panel"></div>
+    </section>
+
+    <section class="card qr-card" id="qrCard">
+      <div class="qr-body" id="qrBody">
+        <div class="qr-wrap">
+          <img id="qr" alt="二维码" src="">
+        </div>
+        <div class="link-wrap">
+          <div class="row" style="margin-top:10px;">
+            <input type="text" id="shareUrl" readonly>
+            <button id="linkCopyBtn">复制</button>
+          </div>
+          <p class="hint">手机与电脑连同一局域网，扫码即可打开同一页面。</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  const clientId = Math.random().toString(36).slice(2) + Date.now().toString(36);
+  const mq = window.matchMedia('(max-width: 720px)');
+  const dot = document.getElementById('dot');
+  const statusText = document.getElementById('statusText');
+  const toastEl = document.getElementById('toast');
+  const panel = document.getElementById('panel');
+
+  const fields = {};
+  let order = [];
+
+  function toast(msg) {
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => toastEl.classList.remove('show'), 2200);
+  }
+
+  function setConnected(on) {
+    dot.classList.toggle('on', on);
+    statusText.textContent = on ? '已连接' : '已断开，重连中…';
+  }
+
+  function updateQR(url) {
+    document.getElementById('qr').src = '/qr.png?url=' + encodeURIComponent(url);
+  }
+
+  function flashState(slot, text) {
+    const f = fields[slot];
+    if (!f) return;
+    f.state.textContent = text;
+    clearTimeout(f.state._t);
+    f.state._t = setTimeout(() => {
+      const st = fields[slot] && fields[slot].state;
+      if (st && st.textContent === text) st.textContent = '';
+    }, 1200);
+  }
+
+  function applyRemote(slot, text) {
+    const f = fields[slot];
+    if (!f || f.el.value === text) return;
+    if (document.activeElement === f.el) {
+      toast('有设备更新了「' + (fields[slot].wrap.querySelector('label').textContent) + '」');
+      return;
+    }
+    f.applying = true;
+    f.el.value = text;
+    f.applying = false;
+  }
+
+  function save(slot) {
+    const f = fields[slot];
+    if (!f) return;
+    clearTimeout(f.timer);
+    f.timer = setTimeout(() => {
+      f.state.textContent = '保存中…';
+      fetch('/api/data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slot, text: f.el.value, clientId }),
+      }).then(r => r.json()).then(res => {
+        f.version = res.version;
+        flashState(slot, '已保存');
+      }).catch(() => { f.state.textContent = '保存失败'; });
+    }, 300);
+  }
+
+  function renameLabels() {
+    order.forEach((slot, i) => {
+      const f = fields[slot];
+      if (!f) return;
+      const el = f.wrap.querySelector('label');
+      if (el) el.textContent = '文本框 ' + (i + 1);
+      const rb = f.wrap.querySelector('[data-act="remove"]');
+      if (rb) rb.disabled = (i === 0);
+    });
+  }
+
+  function addField(slot, fetchData) {
+    if (fields[slot]) return;
+    const field = document.createElement('div');
+    field.className = 'field';
+    field.dataset.field = slot;
+    field.innerHTML =
+      '<label></label>' +
+      '<textarea class="editor" data-slot="' + slot + '" placeholder="内容在所有设备间实时同步…"></textarea>' +
+      '<div class="row">' +
+        '<button class="ghost" data-act="copy" data-slot="' + slot + '">复制</button>' +
+        '<button class="ghost" data-act="refresh" data-slot="' + slot + '">刷新</button>' +
+        '<button class="ghost" data-act="clear" data-slot="' + slot + '">清空</button>' +
+        '<button class="ghost" data-act="undo" data-slot="' + slot + '">撤销</button>' +
+        '<button class="ghost" data-act="redo" data-slot="' + slot + '">重做</button>' +
+        '<button class="ghost" data-act="paste" data-slot="' + slot + '">粘贴</button>' +
+        '<button class="ghost only-mobile" data-act="fullscreen" data-slot="' + slot + '">全屏</button>' +
+        '<button class="ghost danger" data-act="remove" data-slot="' + slot + '">删除</button>' +
+        '<span class="saveState" data-state="' + slot + '"></span>' +
+      '</div>';
+    const f = {
+      el: field.querySelector('textarea'),
+      wrap: field,
+      state: field.querySelector('.saveState'),
+      fsBtn: field.querySelector('[data-act="fullscreen"]'),
+      applying: false,
+      timer: null,
+      version: -1,
+    };
+    f.el.addEventListener('input', () => {
+      if (f.applying) return;
+      f.state.textContent = '编辑中…';
+      save(slot);
+    });
+    f.el.addEventListener('focus', () => { if (mq.matches) setFullscreen(slot, true); });
+    f.el.addEventListener('blur', () => { if (mq.matches) setFullscreen(slot, false); });
+
+    fields[slot] = f;
+    order.push(slot);
+    panel.appendChild(field);
+    renameLabels();
+
+    if (fetchData) {
+      fetch('/api/data?slot=' + encodeURIComponent(slot)).then(r => r.json()).then(d => {
+        f.version = d.version;
+        applyRemote(slot, d.text);
+      }).catch(() => {});
+    }
+  }
+
+  function removeField(slot) {
+    const f = fields[slot];
+    if (!f) return;
+    if (f.wrap.classList.contains('fs')) setFullscreen(slot, false);
+    f.wrap.remove();
+    delete fields[slot];
+    order = order.filter(n => n !== slot);
+    renameLabels();
+  }
+
+  // 全屏文本框（手机端：聚焦自动全屏，失焦退出；也可用按钮/Esc 手动切换）
+  function setFullscreen(slot, on) {
+    const f = fields[slot];
+    if (!f) return;
+    const cur = f.wrap.classList.contains('fs');
+    if (cur === on) return;
+    f.wrap.classList.toggle('fs', on);
+    f.fsBtn.textContent = on ? '退出' : '全屏';
+    document.body.classList.toggle('lock', on);
+    if (on) f.el.focus();
+  }
+
+  // 复制文本：先失焦避免弹键盘，回退用离屏 textarea
+  function copyText(text, okMsg) {
+    const ae = document.activeElement;
+    if (ae && typeof ae.blur === 'function') ae.blur();
+    const fallback = () => {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.readOnly = true;
+      ta.style.position = 'fixed';
+      ta.style.left = '-9999px';
+      ta.style.top = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      ta.setSelectionRange(0, text.length);
+      let done = false;
+      try { done = document.execCommand('copy'); } catch (e) {}
+      document.body.removeChild(ta);
+      toast(done ? okMsg : '复制失败');
+    };
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(() => toast(okMsg), fallback);
+    } else {
+      fallback();
+    }
+  }
+
+  // 粘贴
+  function insertText(ta, text) {
+    let start, end;
+    if (document.activeElement === ta) {
+      start = ta.selectionStart;
+      end = ta.selectionEnd;
+    } else {
+      start = end = ta.value.length;
+    }
+    ta.value = ta.value.slice(0, start) + text + ta.value.slice(end);
+  }
+  function pasteTo(slot) {
+    const f = fields[slot];
+    const ae = document.activeElement;
+    if (navigator.clipboard && navigator.clipboard.readText && window.isSecureContext) {
+      navigator.clipboard.readText().then(t => {
+        if (!t) { flashState(slot, '剪贴板为空'); return; }
+        insertText(f.el, t);
+        save(slot);
+        flashState(slot, '已粘贴 ' + t.length + ' 字符');
+      }).catch(() => { focusForPaste(slot); });
+    } else {
+      focusForPaste(slot);
+    }
+    if (ae && typeof ae.blur === 'function' && ae !== f.el) ae.blur();
+  }
+  function focusForPaste(slot) {
+    fields[slot].el.focus();
+    flashState(slot, '请长按文本框粘贴');
+  }
+
+  function boxName(slot) {
+    const f = fields[slot];
+    if (!f) return '';
+    return f.wrap.querySelector('label').textContent;
+  }
+
+  // 扫码共享折叠
+  const qrCard = document.getElementById('qrCard');
+  const qrToggle = document.getElementById('qrToggle');
+  function setQR(collapsed) {
+    qrCard.classList.toggle('collapsed', collapsed);
+    const label = collapsed ? '展开扫码共享' : '收起扫码共享';
+    qrToggle.setAttribute('aria-label', label);
+    qrToggle.title = label;
+  }
+  function initQR() { setQR(mq.matches); }
+  qrToggle.onclick = () => setQR(!qrCard.classList.contains('collapsed'));
+  if (mq.addEventListener) mq.addEventListener('change', initQR);
+  initQR();
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      Object.keys(fields).forEach(slot => {
+        if (fields[slot].wrap.classList.contains('fs')) setFullscreen(slot, false);
+      });
+    }
+  });
+
+  // 事件委托：所有按钮
+  document.addEventListener('click', e => {
+    const btn = e.target.closest('button[data-act]');
+    if (!btn) return;
+    const act = btn.dataset.act;
+    const slot = btn.dataset.slot;
+    const f = fields[slot];
+    if (!f) return;
+
+    switch (act) {
+      case 'fullscreen':
+        setFullscreen(slot, !f.wrap.classList.contains('fs'));
+        break;
+      case 'copy':
+        copyText(f.el.value, '已复制「' + boxName(slot) + '」');
+        break;
+      case 'paste':
+        pasteTo(slot);
+        break;
+      case 'refresh':
+        f.state.textContent = '刷新中…';
+        fetch('/api/data?slot=' + encodeURIComponent(slot)).then(r => r.json()).then(d => {
+          f.version = d.version;
+          f.applying = true;
+          f.el.value = d.text;
+          f.applying = false;
+          flashState(slot, '已刷新');
+        }).catch(() => { f.state.textContent = '刷新失败'; });
+        break;
+      case 'clear':
+        f.el.value = '';
+        save(slot);
+        break;
+      case 'undo':
+      case 'redo': {
+        const ep = act === 'undo' ? '/api/undo' : '/api/redo';
+        const failText = act === 'undo' ? '没有可撤销记录' : '没有可重做记录';
+        f.state.textContent = act === 'undo' ? '撤销中…' : '重做中…';
+        fetch(ep, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ slot, clientId }),
+        }).then(r => r.json()).then(res => {
+          if (res.error) { flashState(slot, failText); return; }
+          f.version = res.version;
+          f.applying = true;
+          f.el.value = res.text;
+          f.applying = false;
+          flashState(slot, act === 'undo' ? '已撤销' : '已重做');
+        }).catch(() => { f.state.textContent = '操作失败'; });
+        break;
+      }
+      case 'remove':
+        if (slot === order[0]) {
+          toast('第一个文本框不能删除');
+          break;
+        }
+        if (confirm('删除「' + boxName(slot) + '」？内容会从所有设备清除。')) {
+          fetch('/api/slots', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ slot, clientId }),
+          });
+        }
+        break;
+    }
+  });
+
+  // 添加文本框
+  document.getElementById('addBtn').onclick = () => {
+    const name = 'box-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+    fetch('/api/slots', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slot: name, clientId }),
+    }).then(r => r.json()).then(res => {
+      if (res.ok) addField(name, true);
+      else toast('添加失败');
+    }).catch(() => toast('添加失败'));
+  };
+
+  // 初始化
+  Promise.all([fetch('/api/info').then(r => r.json())]).then(([info]) => {
+    let shareUrl = info.lanUrl;
+    if (location.hostname === info.ip) shareUrl = location.href;
+    document.getElementById('shareUrl').value = shareUrl;
+    updateQR(shareUrl);
+    return fetch('/api/slots').then(r => r.json());
+  }).then(({ slots }) => {
+    slots.forEach(s => addField(s, true));
+  }).catch(() => {});
+
+  // SSE 实时同步
+  function connect() {
+    const es = new EventSource('/api/events');
+    es.onopen = () => setConnected(true);
+    es.onerror = () => setConnected(false);
+    es.onmessage = (e) => {
+      const msg = JSON.parse(e.data);
+      if (msg.type === 'slot') {
+        if (msg.action === 'add' && !fields[msg.slot]) addField(msg.slot, true);
+        else if (msg.action === 'remove' && fields[msg.slot]) removeField(msg.slot);
+        return;
+      }
+      if (!fields[msg.slot]) return;
+      fields[msg.slot].version = msg.version;
+      if (msg.clientId === clientId) return;
+      applyRemote(msg.slot, msg.text);
+    };
+  }
+  connect();
+
+  document.getElementById('linkCopyBtn').onclick = () => {
+    copyText(document.getElementById('shareUrl').value, '已复制链接');
+  };
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+# 数据文件（含用户共享内容与历史）
+share-text-data.json
+share-text-data.json.tmp
+
+# 编译产物
+/share-text
+
+# macOS
+.DS_Store
