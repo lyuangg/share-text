@@ -11,6 +11,9 @@
 - **复制 / 粘贴**：一键复制内容；手机端粘贴按钮直接读剪贴板（不支持时引导长按粘贴）
 - **持久化**：内容与历史自动存储到本地 JSON 文件，重启不丢失
 
+![screenshot](./screenshot.png)
+![screenshot](./screenshot2.png)
+
 ## 使用
 
 ```bash
